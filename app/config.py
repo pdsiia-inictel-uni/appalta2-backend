@@ -8,7 +8,7 @@ load_dotenv()
 # Información básica de la aplicación
 APP_NAME = os.getenv("APP_NAME", "Appalta2")
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
-
+MAX_DRIFT_SECONDS = 300  # 5 minutos
 # Configuración de correo
 MAIL_USERNAME = os.getenv("MAIL_USERNAME")
 MAIL_PASSWORD = os.getenv("MAIL_PASSWORD")

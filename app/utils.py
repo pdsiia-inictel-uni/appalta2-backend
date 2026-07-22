@@ -1,7 +1,13 @@
+from locale import normalize
+
 from fastapi_mail import FastMail, MessageSchema, ConnectionConfig
 from pydantic import EmailStr
 import asyncio
 import resend
+import hmac
+import hashlib
+
+from app.schemas.station_measurement import StationMeasurementRequest
 
 resend.api_key = "re_LFfxqjJa_2Tmm2XnjbWKAkefbVWoasCLd"
 
@@ -344,6 +350,50 @@ def invalid_link_page():
     </html>
     """
     return HTMLResponse(content=html_content, status_code=400)
+
+def normalize_empty(value):
+
+    if value is None:
+        return "NA"
+
+    return str(value)
+
+def build_message(
+    station_id: str,
+    data: StationMeasurementRequest
+) -> str:
+
+    return (
+        f"{station_id}|"
+        f"{data.timestamp}|"
+        f"{normalize_empty(data.ambient_temperature)}|"
+        f"{normalize_empty(data.ambient_humidity)}|"
+        f"{normalize_empty(data.atmospheric_pressure)}"
+    )
+
+def verify_signature(
+    message: str,
+    secret_key: str,
+    received_signature: str
+) -> bool:
+
+    expected_signature = hmac.new(
+        secret_key.encode(),
+        message.encode(),
+        hashlib.sha256
+    ).hexdigest()
+
+    return hmac.compare_digest(
+        expected_signature,
+        received_signature
+    )
+
+def to_float(value):
+
+    if value is None:
+        return None
+
+    return float(value)
 
 if __name__ == "__main__":
     verification_link = "http://192.168.18.22:8000/verify/abc123"

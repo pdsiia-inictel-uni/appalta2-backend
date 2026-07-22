@@ -1,18 +1,20 @@
 from sqlalchemy.orm import Session
-from . import models, auth, schemas
+from app.models.user import User
+from app.services import auth
+from app.schemas import user
 
 def get_user_by_email(db: Session, email: str):
-    return db.query(models.User).filter(models.User.email == email).first()
+    return db.query(User).filter(User.email == email).first()
 
 def get_user_by_token(db: Session, verification_token: str):
-    return db.query(models.User).filter(models.User.verification_token == verification_token).first()
+    return db.query(User).filter(User.verification_token == verification_token).first()
 
 def get_user_by_reset_password_token(db: Session, reset_password_token: str):
-    return db.query(models.User).filter(models.User.reset_password_token == reset_password_token).first()
+    return db.query(User).filter(User.reset_password_token == reset_password_token).first()
 
-def create_user(db: Session, user: schemas.UserCreate, verification_token: str):
+def create_user(db: Session, user: user.UserCreate, verification_token: str):
     hashed = auth.hash_password(user.password)
-    db_user = models.User(email = user.email, 
+    db_user = User(email = user.email, 
                           firstname = user.firstname,
                           hashed_password = hashed,
                           father_lastname = user.father_lastname,
@@ -35,4 +37,3 @@ def autenticate_user(db: Session, email: str, password: str):
     if not user or not auth.verify_password(password, user.hashed_password):
         return None
     return user
-0
