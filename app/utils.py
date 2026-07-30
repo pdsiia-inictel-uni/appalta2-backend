@@ -6,6 +6,7 @@ import asyncio
 import resend
 import hmac
 import hashlib
+from decimal import Decimal
 
 from app.schemas.station_measurement import StationMeasurementRequest
 
@@ -356,20 +357,55 @@ def normalize_empty(value):
     if value is None:
         return "NA"
 
-    return str(value)
+    return format(
+        Decimal(str(value)),
+        "f"
+    ).rstrip("0").rstrip(".")
+
 
 def build_message(
-    station_id: str,
+    station_code: str,
     data: StationMeasurementRequest
 ) -> str:
 
-    return (
-        f"{station_id}|"
-        f"{data.timestamp}|"
-        f"{normalize_empty(data.ambient_temperature)}|"
-        f"{normalize_empty(data.ambient_humidity)}|"
-        f"{normalize_empty(data.atmospheric_pressure)}"
-    )
+    parts = [
+
+        station_code,
+
+        str(data.timestamp),
+
+        #normalize_empty(data.latitude),
+
+        #normalize_empty(data.longitude),
+
+        normalize_empty(data.battery_level)
+
+    ]
+
+    for measurement in data.measurements:
+
+        parts.append(
+            measurement.sensor_code
+        )
+
+        parts.append(
+            str(normalize_empty(measurement.value))
+        )
+
+    return "|".join(parts)
+
+# def build_message(
+#     station_id: str,
+#     data: StationMeasurementRequest
+# ) -> str:
+
+#     return (
+#         f"{station_id}|"
+#         f"{data.timestamp}|"
+#         f"{normalize_empty(data.ambient_temperature)}|"
+#         f"{normalize_empty(data.ambient_humidity)}|"
+#         f"{normalize_empty(data.atmospheric_pressure)}"
+#     )
 
 def verify_signature(
     message: str,

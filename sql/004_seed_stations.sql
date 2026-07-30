@@ -1,30 +1,32 @@
-INSERT INTO stations
-(
-    station_id,
+-- =====================================================
+-- ESTACIONES DE EJEMPLO
+-- =====================================================
+
+INSERT INTO stations (
+
+    station_code,
     mac_address,
-    api_key,
     secret_key
+
 )
 VALUES
-(
-    'EST001',
-    '24:6F:28:AA:11:01',
-    encode(gen_random_bytes(32), 'hex'),
-    encode(gen_random_bytes(64), 'hex')
-);
 
+(
+    'EST001-PALTAS',
+    'AA:BB:CC:DD:EE:01',
 
-INSERT INTO stations
+    encode(
+        gen_random_bytes(32),
+        'hex'
+    )
+),
+
 (
-    station_id,
-    mac_address,
-    api_key,
-    secret_key
-)
-VALUES
-(
-    'EST002',
-    '24:6F:28:AA:11:02',
-    encode(gen_random_bytes(32), 'hex'),
-    encode(gen_random_bytes(64), 'hex')
+    'EST002-PALTAS',
+    'AA:BB:CC:DD:EE:02',
+
+    encode(
+        gen_random_bytes(32),
+        'hex'
+    )
 );

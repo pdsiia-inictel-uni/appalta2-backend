@@ -1,20 +1,64 @@
 import asyncio
+
 class SSEManager:
+
     def __init__(self):
+
         self.clients = []
 
-    async def connet(self):
+    async def connect(
+        self,
+        stations: set[str] | None = None
+    ):
+
         queue = asyncio.Queue()
-        self.clients.append(queue)
+
+        self.clients.append({
+
+            "queue": queue,
+
+            "stations": stations
+
+        })
+
+        print("connect self.clients:", self.clients)
         return queue
 
-    def disconnect(self, queue):
-        if queue in self.clients:
-            self.clients.remove(queue)
+    def disconnect(
+        self,
+        queue
+    ):
+        print("desconectando...")
+        print("self.clients:", self.clients)
+        self.clients = [
 
-    async def broadcast(self, data):
+            client
+
+            for client in self.clients
+
+            if client["queue"] != queue
+
+        ]
+
+    async def broadcast(
+        self,
+        station_code: str,
+        data
+    ):
+        print("self.clients:", self.clients)
+        print("station_code:", station_code)
 
         for client in self.clients:
-            await client.put(data)
+
+            subscriptions = client["stations"]
+
+            if (
+                subscriptions is None or
+                station_code in subscriptions
+            ):
+
+                await client["queue"].put(data)
+
 
 sse_manager = SSEManager()
+

@@ -1,8 +1,11 @@
 from app.models.station import Station
 from sqlalchemy import func
 from app.models.station_measurement import StationMeasurement
+from app.models.sensor_measurement import SensorMeasurement
+from app.models.sensor import Sensor
 from app.utils import to_float
-from app.schemas.station import StationResponse
+from app.schemas.station import StationResponse, SensorMeasurementResponse
+
 def get_station_by_station_code(
     db,
     station_code
@@ -26,73 +29,243 @@ def update_last_timestamp(
 
     db.commit()
 
-def get_all_stations(db):
+def get_latest_station_measurements(db):
+
     latest_measurements = (
+
         db.query(
+
             StationMeasurement.station_id,
+
             func.max(
                 StationMeasurement.measurement_timestamp
             ).label("max_timestamp")
+
         )
-         .group_by(
+
+        .group_by(
             StationMeasurement.station_id
         )
 
         .subquery()
+
     )
 
-    results = (
+    return (
+
         db.query(
+
             Station,
+
             StationMeasurement
-        )
-        .outerjoin(
-            latest_measurements,
-            Station.id == latest_measurements.c.station_id
+
         )
 
         .outerjoin(
-            StationMeasurement,
-            (
-                StationMeasurement.station_id
-                == latest_measurements.c.station_id
-            )
-            &
-            (
-                StationMeasurement.measurement_timestamp
-                == latest_measurements.c.max_timestamp
-            )
+
+            latest_measurements,
+
+            Station.id ==
+            latest_measurements.c.station_id
+
         )
+
+        .outerjoin(
+
+            StationMeasurement,
+
+            (
+                StationMeasurement.station_id ==
+                latest_measurements.c.station_id
+            )
+
+            &
+
+            (
+                StationMeasurement.measurement_timestamp ==
+                latest_measurements.c.max_timestamp
+            )
+
+        )
+
         .all()
+
     )
+
+def get_sensor_measurements(
+    db,
+    measurement_ids
+):
+
+    if not measurement_ids:
+
+        return {}
+
+    rows = (
+
+        db.query(
+
+            SensorMeasurement,
+
+            Sensor
+
+        )
+
+        .join(
+
+            Sensor,
+
+            Sensor.id ==
+            SensorMeasurement.sensor_id
+
+        )
+
+        .filter(
+
+            SensorMeasurement.measurement_id.in_(
+                measurement_ids
+            )
+
+        )
+
+        .all()
+
+    )
+
+    sensor_map = {}
+
+    for sensor_measurement, sensor in rows:
+
+        sensor_map.setdefault(
+
+            sensor_measurement.measurement_id,
+
+            []
+
+        ).append(
+
+            SensorMeasurementResponse(
+
+                sensor_code=sensor.sensor_code,
+
+                value=float(
+                    sensor_measurement.sensor_value
+                )
+
+            )
+
+        )
+
+    return sensor_map
+
+def build_station_response(
+
+    results,
+
+    sensor_map
+
+):
 
     stations = []
 
     for station, measurement in results:
-        stations.append(StationResponse(
 
-        station_code=station.station_code,
+        stations.append(
 
-        measurement_timestamp=(
-            measurement.measurement_timestamp
-            if measurement
-            else None
-        ),
+            StationResponse(
 
-        latitude=to_float(measurement.latitude if measurement else None),
-        longitude=to_float(measurement.longitude if measurement else None),
+                station_code=station.station_code,
 
-        battery_level=to_float(measurement.battery_level if measurement else None),
+                measurement_timestamp=(
 
-        ambient_temperature=to_float(measurement.ambient_temperature if measurement else None),
-        ambient_humidity=to_float(measurement.ambient_humidity if measurement else None),
-        atmospheric_pressure=to_float(measurement.atmospheric_pressure if measurement else None),
+                    measurement.measurement_timestamp
 
-        soil_temperature=to_float(measurement.soil_temperature if measurement else None),
-        soil_moisture=to_float(measurement.soil_moisture if measurement else None),
-        soil_ph=to_float(measurement.soil_ph if measurement else None)
+                    if measurement
 
-    )
-)
+                    else None
+
+                ),
+
+                latitude=to_float(
+
+                    measurement.latitude
+
+                    if measurement
+
+                    else None
+
+                ),
+
+                longitude=to_float(
+
+                    measurement.longitude
+
+                    if measurement
+
+                    else None
+
+                ),
+
+                battery_level=to_float(
+
+                    measurement.battery_level
+
+                    if measurement
+
+                    else None
+
+                ),
+
+                measurements=(
+
+                    sensor_map.get(
+
+                        measurement.id,
+
+                        []
+
+                    )
+
+                    if measurement
+
+                    else []
+
+                )
+
+            )
+
+        )
 
     return stations
+
+def get_all_stations(db):
+
+    results = get_latest_station_measurements(
+        db
+    )
+
+    measurement_ids = [
+
+        measurement.id
+
+        for _, measurement in results
+
+        if measurement is not None
+
+    ]
+
+    sensor_map = get_sensor_measurements(
+
+        db,
+
+        measurement_ids
+
+    )
+
+    return build_station_response(
+
+        results,
+
+        sensor_map
+
+    )

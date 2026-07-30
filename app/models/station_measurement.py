@@ -1,14 +1,16 @@
 from sqlalchemy import Column, DateTime, BigInteger, Numeric
 from app.database.connection import Base
 from sqlalchemy import func
-from sqlalchemy.orm import relationship
 from sqlalchemy import ForeignKey
 
 class StationMeasurement(Base):
 
     __tablename__ = "station_measurements"
 
-    id = Column(BigInteger, primary_key=True)
+    id = Column(
+        BigInteger,
+        primary_key=True
+    )
 
     station_id = Column(
         BigInteger,
@@ -16,22 +18,28 @@ class StationMeasurement(Base):
         nullable=False
     )
 
-    measurement_timestamp = Column(BigInteger)
+    measurement_timestamp = Column(
+        BigInteger,
+        nullable=False
+    )
 
-    latitude = Column(Numeric)
-    longitude = Column(Numeric)
+    latitude = Column(
+        Numeric(10, 7),
+        nullable=True
+    )
 
-    battery_level = Column(Numeric)
+    longitude = Column(
+        Numeric(10, 7),
+        nullable=True
+    )
 
-    ambient_temperature = Column(Numeric)
-    ambient_humidity = Column(Numeric)
-    atmospheric_pressure = Column(Numeric)
-
-    soil_temperature = Column(Numeric)
-    soil_moisture = Column(Numeric)
-    soil_ph = Column(Numeric)
+    battery_level = Column(
+        Numeric(5, 2),
+        nullable=True
+    )
 
     received_at = Column(
         DateTime,
-        server_default=func.now()
+        server_default=func.now(),
+        nullable=False
     )

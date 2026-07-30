@@ -1,14 +1,18 @@
-from fastapi import APIRouter, Depends, HTTPException, Header, Path
+from fastapi import APIRouter, Depends, HTTPException, Header, Path, Query
 from sqlalchemy.orm import Session
 from app.database.connection import get_db
 from app.config import MAX_DRIFT_SECONDS
+from app.database.sensor_measurement import get_sensor_history
 from app.database.station import get_station_by_station_code, update_last_timestamp
-from app.database.station_measurement import create_measurement
+from app.database.station_measurement import save_measurement
+from app.database.station_events import save_events
+from app.schemas.sensor_measurement import SensorMeasurementHistoryItem, SensorMeasurementHistoryResponse
 from app.utils import build_message, verify_signature
-from app.schemas.station_measurement import StationMeasurementRequest, StationMeasurementEvent
+from app.schemas.station_measurement import StationMeasurementRequest, StationMeasurementEvent, SensorMeasurementEvent
 from app.models.station_measurement import StationMeasurement
 from app.services.sse_manager import sse_manager
 from sse_starlette.sse import EventSourceResponse
+from typing import Optional
 import logging
 import time
 import re
@@ -32,7 +36,6 @@ LAST_TIMESTAMPS = {}
 async def recive_data(
     station_code: str = Path(...),
     data: StationMeasurementRequest = ...,
-    api_key: str = Header(..., alias="Api-Key"),
     signature: str = Header(..., alias="Signature"),
     db: Session = Depends(get_db)
 ):  
@@ -46,23 +49,21 @@ async def recive_data(
             detail="Invalid station code"
         )
 
-    print("station_code:", station_code)
-    expected = API_KEYS.get(station_code)
-    print("llego aqui")
-    print("data:",data)
-
-    if expected is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Estación no encontrada"
-        )
-
-    if expected != api_key:
-        raise HTTPException(
-            status_code=401,
-            detail="API Key inválida"
-        )
+    station = get_station_by_station_code(
+            db,
+            station_code
+    )
+        
+    if station is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Estación no encontrada"
+            )
     
+    print("station_code:", station_code)
+    #expected = API_KEYS.get(station_code)
+    print("llego aqui")
+ 
     current_time = int(time.time())
 
     if abs(current_time - data.timestamp) > MAX_DRIFT_SECONDS:
@@ -75,8 +76,9 @@ async def recive_data(
         station_code,
         data
     )
-    
-    secret_key = SECRET_KEYS[station_code]
+    print("message:\n", message)
+    print()
+    secret_key = station.secret_key#SECRET_KEYS[station_code]
 
     if not verify_signature(
         message,
@@ -88,7 +90,7 @@ async def recive_data(
             detail="Firma inválida"
         )
     
-    last_timestamp = LAST_TIMESTAMPS.get(station_code)
+    last_timestamp = station.last_timestamp #LAST_TIMESTAMPS.get(station_code)
 
     if last_timestamp is not None:
         if data.timestamp <= last_timestamp:
@@ -97,60 +99,71 @@ async def recive_data(
                 detail="Timestamp repetido"
             )
 
-    LAST_TIMESTAMPS[station_code] = data.timestamp
+    #LAST_TIMESTAMPS[station_code] = data.timestamp
     
-    station = get_station_by_station_code(
-        db,
-        station_code
-    )
+    # station = get_station_by_station_code(
+    #     db,
+    #     station_code
+    # )
     
     measurement = StationMeasurement(
-
         station_id=station.id,
-
         measurement_timestamp=data.timestamp,
-
         latitude=data.latitude,
         longitude=data.longitude,
-
-        battery_level=data.battery_level,
-
-        ambient_temperature=data.ambient_temperature,
-        ambient_humidity=data.ambient_humidity,
-        atmospheric_pressure=data.atmospheric_pressure,
-
-        soil_temperature=data.soil_temperature,
-        soil_moisture=data.soil_moisture,
-        soil_ph=data.soil_ph
+        battery_level=data.battery_level
     )
     
-    create_measurement(
-        db,
-        measurement
-    )
-
-    update_last_timestamp(
+    save_measurement(
         db,
         station,
-        data.timestamp
+        data
     )
 
-    event = StationMeasurementEvent(
-    station_code=station.station_code,
-    measurement_timestamp=measurement.measurement_timestamp,
-    latitude=measurement.latitude,
-    longitude=measurement.longitude,
-    battery_level=measurement.battery_level,
-    ambient_temperature=measurement.ambient_temperature,
-    ambient_humidity=measurement.ambient_humidity,
-    atmospheric_pressure=measurement.atmospheric_pressure,
-    soil_temperature=measurement.soil_temperature,
-    soil_moisture=measurement.soil_moisture,
-    soil_ph=measurement.soil_ph
-    )
-    
     try:
-        await sse_manager.broadcast(event.model_dump())
+        save_events(
+            db,
+            measurement,
+            station,
+            data
+        )
+    except Exception:
+        logger.exception(
+            "No fue posible guardar los eventos."
+        )
+
+
+    event = StationMeasurementEvent(
+
+    station_code=station.station_code,
+
+    timestamp=data.timestamp,
+
+    latitude=data.latitude,
+
+    longitude=data.longitude,
+
+    battery_level=data.battery_level,
+
+    measurements=[
+
+        SensorMeasurementEvent(
+
+            sensor_code=sensor.sensor_code,
+
+            value=sensor.value
+
+        )
+
+        for sensor in data.measurements
+
+    ]
+)
+    try:
+        await sse_manager.broadcast(
+            station.station_code,
+            event.model_dump())
+        
     except Exception:
         logger.exception(
             "No fue posible enviar el evento SSE para la estación %s",
@@ -161,19 +174,136 @@ async def recive_data(
         "status": "received",
         "station_id": station_code
     }
+
 @router.get("/stations/stream")
-async def station_stream():
-    queue =  await sse_manager.connet()
+async def station_stream(
+
+    station: Optional[str] = Query(None),
+
+    stations: Optional[str] = Query(None)
+
+):
+
+    subscriptions = None
+
+    if station:
+
+        subscriptions = {
+            station
+        }
+
+    elif stations:
+
+        subscriptions = {
+
+            s.strip()
+
+            for s in stations.split(",")
+
+        }
+
+    queue = await sse_manager.connect(
+        subscriptions
+    )
+
     async def event_generator():
+
         try:
+
             while True:
+
                 data = await queue.get()
 
                 yield {
-                    "event": "measurement",
-                    "data": data
-                }
-        finally:
-            sse_manager.disconnect(queue)
 
-    return EventSourceResponse(event_generator())
+                    "event": "measurement",
+
+                    "data": data
+
+                }
+
+        finally:
+
+            sse_manager.disconnect(
+                queue
+            )
+
+    return EventSourceResponse(
+        event_generator()
+    )
+
+
+@router.get(
+
+    "/stations/{station_code}/sensors/{sensor_code}/measurements",
+
+    response_model=SensorMeasurementHistoryResponse
+
+)
+def sensor_history(
+
+    station_code: str = Path(...),
+
+    sensor_code: str = Path(...),
+
+    start_time: Optional[int] = Query(None),
+
+    end_time: Optional[int] = Query(None),
+
+    limit: Optional[int] = Query(
+    None,
+    ge=1,
+    le=1000
+),
+    db: Session = Depends(get_db)
+
+):
+    if (
+    start_time is not None
+    and
+    end_time is not None
+    and
+    start_time > end_time
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="start_time debe ser menor o igual que end_time."
+        )
+
+    rows = get_sensor_history(
+
+        db,
+
+        station_code,
+
+        sensor_code,
+
+        start_time,
+
+        end_time,
+
+        limit
+
+    )
+
+    return SensorMeasurementHistoryResponse(
+
+        station_code=station_code,
+
+        sensor_code=sensor_code,
+
+        measurements=[
+
+            SensorMeasurementHistoryItem(
+
+                timestamp=row.measurement_timestamp,
+
+                value=float(row.sensor_value)
+
+            )
+
+            for row in rows
+
+        ]
+
+    )

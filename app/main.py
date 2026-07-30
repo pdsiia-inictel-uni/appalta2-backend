@@ -3,10 +3,7 @@ from app.routes.user import router as user_router
 from app.routes.measurements import router as measurements_router
 from app.routes.stations import router as stations_router
 import logging
-#from . import routes
-#from . import models, database, routes
 
-#models.Base.metadata.create_all(bind=database.engine)
 
 logging.basicConfig(
     level=logging.INFO,

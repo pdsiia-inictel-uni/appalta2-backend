@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, BigInteger, Numeric
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, BigInteger, Numeric, func
 from app.database.connection import Base
 from datetime import datetime, timezone 
 
@@ -16,4 +16,7 @@ class User(Base):
     verification_token = Column(String, nullable=True)
     reset_password_token = Column(String, nullable=True)
     reset_password_token_expiry = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.now(timezone.utc), nullable=False)
+    created_at = Column(
+    DateTime(timezone=True),
+    server_default=func.now(),
+    nullable=False)
