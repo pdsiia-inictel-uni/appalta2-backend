@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Header, Path, Query
 from sqlalchemy.orm import Session
 from app.database.connection import get_db
-from app.config import MAX_DRIFT_SECONDS
+from app.config.config import MAX_DRIFT_SECONDS
 from app.database.sensor_measurement import get_sensor_history
 from app.database.station import get_station_by_station_code, update_last_timestamp
 from app.database.station_measurement import save_measurement

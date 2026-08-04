@@ -10,8 +10,8 @@ from app.schemas import user as user_schemas
 from app.database.connection import get_db
 from jose import jwt, JWTError
 import uuid
-from app.config import BACKEND_URL
-from app.utils import send_verification_email, send_password_reset_email
+from app.config.config import BACKEND_URL
+from app.utils import send_verification_email_gmail, send_password_reset_email_gmail
 import datetime
 from datetime import datetime, timedelta, timezone
 
@@ -36,8 +36,8 @@ async def register(user: user_schemas.UserCreate, db: Session = Depends(get_db))
     
     db_user = user_db.create_user(db, user, verification_token)
 
-    verification_link = f"{BACKEND_URL}/api/verify/{verification_token}"
-    await send_verification_email(user.email, verification_link)
+    verification_link = f"{BACKEND_URL}/api/v1/user/verify/{verification_token}"
+    await send_verification_email_gmail(user.email, verification_link)
     return db_user
 
 
@@ -145,7 +145,7 @@ async def resend_verification(req: user_schemas.ResendVerificationRequest, db: S
     verification_link = f"{BACKEND_URL}/api/v1/user/verify/{new_token}"
 
     # Enviar el correo de verificación
-    await send_verification_email(user.email, verification_link)
+    await send_verification_email_gmail(user.email, verification_link)
 
     return {"message": "Se ha reenviado el correo de verificación. Revisa tu bandeja de entrada."}  
 
@@ -161,8 +161,8 @@ async def forgot_password(req: user_schemas.ResetRequest, db: Session = Depends(
     db.commit()
 
     # enviar correo con enlace
-    link = f"{BACKEND_URL}/api/reset/{user.reset_password_token}"
-    await send_password_reset_email(user.email, link)
+    link = f"{BACKEND_URL}/api/v1/user/reset/{user.reset_password_token}"
+    await send_password_reset_email_gmail(user.email, link)
 
     return {"message": "Se ha enviado un enlace de recuperación a tu correo."}
 

@@ -9,20 +9,20 @@ import hashlib
 from decimal import Decimal
 
 from app.schemas.station_measurement import StationMeasurementRequest
-
-resend.api_key = "re_LFfxqjJa_2Tmm2XnjbWKAkefbVWoasCLd"
+from app.config.config import mail_conf
+#resend.api_key = "re_LFfxqjJa_2Tmm2XnjbWKAkefbVWoasCLd"
 
 # bllf wqlj nukv tuzg
-conf = ConnectionConfig(
-    MAIL_USERNAME="anthonymig1@gmail.com",
-    MAIL_PASSWORD="bllfwqljnukvtuzg",
-    MAIL_FROM="anthonymig1@gmail.com",
-    MAIL_PORT=587,
-    MAIL_SERVER="smtp.gmail.com",
-    MAIL_STARTTLS=True,
-    MAIL_SSL_TLS=False,
-    USE_CREDENTIALS=True
-)
+# conf = ConnectionConfig(
+#     MAIL_USERNAME="anthonymig1@gmail.com",
+#     MAIL_PASSWORD="bllfwqljnukvtuzg",
+#     MAIL_FROM="anthonymig1@gmail.com",
+#     MAIL_PORT=587,
+#     MAIL_SERVER="smtp.gmail.com",
+#     MAIL_STARTTLS=True,
+#     MAIL_SSL_TLS=False,
+#     USE_CREDENTIALS=True
+# )
 
 async def send_password_reset_email(to: EmailStr, reset_link: str):
     resend.Emails.send({
@@ -68,7 +68,7 @@ async def send_password_reset_email_gmail(to: EmailStr, reset_link: str):
         """,
         subtype="html"
     )
-    fm = FastMail(conf)
+    fm = FastMail(mail_conf)
     await fm.send_message(message)
 
 
@@ -272,7 +272,7 @@ async def send_verification_email_gmail(to: EmailStr, verification_link: str):
         subtype="html"
     )
 
-    fm = FastMail(conf)
+    fm = FastMail(mail_conf)
     await fm.send_message(message)
     print(f"✅ Correo de verificación enviado correctamente a {to}")
 
