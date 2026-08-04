@@ -36,7 +36,7 @@ async def register(user: user_schemas.UserCreate, db: Session = Depends(get_db))
     
     db_user = user_db.create_user(db, user, verification_token)
 
-    verification_link = f"{BACKEND_URL}/api/v1/user/verify/{verification_token}"
+    verification_link = f"{BACKEND_URL}/v1/user/verify/{verification_token}"
     await send_verification_email_gmail(user.email, verification_link)
     return db_user
 
@@ -142,7 +142,7 @@ async def resend_verification(req: user_schemas.ResendVerificationRequest, db: S
     db.commit()
 
     # Generar el nuevo enlace
-    verification_link = f"{BACKEND_URL}/api/v1/user/verify/{new_token}"
+    verification_link = f"{BACKEND_URL}/v1/user/verify/{new_token}"
 
     # Enviar el correo de verificación
     await send_verification_email_gmail(user.email, verification_link)
@@ -161,7 +161,7 @@ async def forgot_password(req: user_schemas.ResetRequest, db: Session = Depends(
     db.commit()
 
     # enviar correo con enlace
-    link = f"{BACKEND_URL}/api/v1/user/reset/{user.reset_password_token}"
+    link = f"{BACKEND_URL}/v1/user/reset/{user.reset_password_token}"
     await send_password_reset_email_gmail(user.email, link)
 
     return {"message": "Se ha enviado un enlace de recuperación a tu correo."}

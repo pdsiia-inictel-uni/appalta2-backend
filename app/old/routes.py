@@ -36,7 +36,7 @@ async def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
     
     db_user = crud.create_user(db, user, verification_token)
 
-    verification_link = f"{BACKEND_URL}/api/verify/{verification_token}"
+    verification_link = f"{BACKEND_URL}/v1/verify/{verification_token}"
     await send_verification_email(user.email, verification_link)
     return db_user
 
@@ -142,7 +142,7 @@ async def resend_verification(req: schemas.ResendVerificationRequest, db: Sessio
     db.commit()
 
     # Generar el nuevo enlace
-    verification_link = f"{BACKEND_URL}/api/verify/{new_token}"
+    verification_link = f"{BACKEND_URL}/v1/verify/{new_token}"
 
     # Enviar el correo de verificación
     await send_verification_email(user.email, verification_link)
@@ -161,7 +161,7 @@ async def forgot_password(req: schemas.ResetRequest, db: Session = Depends(get_d
     db.commit()
 
     # enviar correo con enlace
-    link = f"{BACKEND_URL}/api/reset/{user.reset_password_token}"
+    link = f"{BACKEND_URL}/v1/reset/{user.reset_password_token}"
     await send_password_reset_email(user.email, link)
 
     return {"message": "Se ha enviado un enlace de recuperación a tu correo."}

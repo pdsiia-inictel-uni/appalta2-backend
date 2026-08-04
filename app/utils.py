@@ -10,19 +10,6 @@ from decimal import Decimal
 
 from app.schemas.station_measurement import StationMeasurementRequest
 from app.config.config import mail_conf
-#resend.api_key = "re_LFfxqjJa_2Tmm2XnjbWKAkefbVWoasCLd"
-
-# bllf wqlj nukv tuzg
-# conf = ConnectionConfig(
-#     MAIL_USERNAME="anthonymig1@gmail.com",
-#     MAIL_PASSWORD="bllfwqljnukvtuzg",
-#     MAIL_FROM="anthonymig1@gmail.com",
-#     MAIL_PORT=587,
-#     MAIL_SERVER="smtp.gmail.com",
-#     MAIL_STARTTLS=True,
-#     MAIL_SSL_TLS=False,
-#     USE_CREDENTIALS=True
-# )
 
 async def send_password_reset_email(to: EmailStr, reset_link: str):
     resend.Emails.send({
