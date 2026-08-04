@@ -26,6 +26,14 @@ def root():
         "status": "running"
     }
 
+@router.get("/user/help")
+def help(request: Request):
+    return templates.TemplateResponse(
+            request=request,
+            name="verified.html",
+            context={}
+            )
+
 @router.post("/user/register", response_model = user_schemas.UserResponse)
 async def register(user: user_schemas.UserCreate, db: Session = Depends(get_db)):
     db_user = user_db.get_user_by_email(db, user.email)
@@ -120,7 +128,13 @@ def verify_email(request: Request, token: str, db: Session = Depends(get_db)):
     user.verification_token = None
     db.commit()
 
-    return templates.TemplateResponse("verified.html", {"request": request})
+    return templates.TemplateResponse(
+        request=request,
+        name="verified.html",
+        context={}
+        )
+
+    #return templates.TemplateResponse("verified.html", {"request": request})
 
 @router.post("/user/resend-verification")
 async def resend_verification(req: user_schemas.ResendVerificationRequest, db: Session = Depends(get_db)):
@@ -173,8 +187,10 @@ def serve_reset_page(token: str, request: Request, db: Session = Depends(get_db)
     
     if not user:
         return templates.TemplateResponse(
-            "invalid_link.html", {"request": request}
-        )
+                    request=request,
+                    name="invalid_link.html",
+                    context={}
+                    )
     
     expiry = user.reset_password_token_expiry
     # Si la fecha es naive, añádele zona horaria UTC
@@ -183,10 +199,17 @@ def serve_reset_page(token: str, request: Request, db: Session = Depends(get_db)
 
     if datetime.now(timezone.utc) > expiry:
         return templates.TemplateResponse(
-            "invalid_link.html", {"request": request}
-        )
-   
-    return templates.TemplateResponse("reset_password.html", {"request": request, "token": token})
+                    request=request,
+                    name="invalid_link.html",
+                    context={}
+                    )
+
+    return templates.TemplateResponse(
+        request=request,
+        name="reset_password.html",
+        context={"token": token}
+    )
+    #return templates.TemplateResponse("reset_password.html", {"request": request, "token": token})
 
 @router.post("/user/password/reset")
 def reset_password(req: user_schemas.ResetPassword, db: Session = Depends(get_db)):
