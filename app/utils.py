@@ -11,6 +11,8 @@ from decimal import Decimal
 from app.schemas.station_measurement import StationMeasurementRequest
 from app.config.config import mail_conf
 
+ONLINE_TIMEOUT = 24 * 60 * 60
+
 async def send_password_reset_email(to: EmailStr, reset_link: str):
     resend.Emails.send({
     "from": "onboarding@resend.dev",

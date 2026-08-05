@@ -3,8 +3,9 @@ from sqlalchemy import func
 from app.models.station_measurement import StationMeasurement
 from app.models.sensor_measurement import SensorMeasurement
 from app.models.sensor import Sensor
-from app.utils import to_float
+from app.utils import ONLINE_TIMEOUT, to_float
 from app.schemas.station import StationResponse, SensorMeasurementResponse
+import time
 
 def get_station_by_station_code(
     db,
@@ -168,13 +169,30 @@ def build_station_response(
 
     stations = []
 
+    current_timestamp = int(
+        time.time()
+    )
+
     for station, measurement in results:
+
+        online = False
+
+        if measurement is not None:
+            online = (
+
+                current_timestamp -
+
+                measurement.measurement_timestamp
+
+            ) <= ONLINE_TIMEOUT
 
         stations.append(
 
             StationResponse(
 
                 station_code=station.station_code,
+
+                online=online,
 
                 measurement_timestamp=(
 
