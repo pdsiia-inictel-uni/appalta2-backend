@@ -5,6 +5,8 @@ from app.database import station as station_db
 from app.database.sensor_measurement import get_measurement_sensors
 from app.database.station_measurement import get_latest_station_measurement
 from app.schemas.station import StationResponse
+from app.utils import ONLINE_TIMEOUT
+import time
 
 router = APIRouter()
 
@@ -63,6 +65,13 @@ def get_latest_station(
             measurement.id
 
         )
+    online = False
+
+    if measurement is not None:
+        online = (
+            int(time.time()) -
+            measurement.measurement_timestamp
+        ) <= ONLINE_TIMEOUT
 
     return StationResponse(
 

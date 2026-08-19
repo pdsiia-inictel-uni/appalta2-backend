@@ -384,7 +384,7 @@ def build_message(
             str(normalize_empty(measurement.value))
         )
 
-    return "|".join(parts)
+    return "|".join(parts).strip()
 
 # def build_message(
 #     station_id: str,
@@ -411,6 +411,7 @@ def verify_signature(
         hashlib.sha256
     ).hexdigest()
 
+    print("expected_signature:", expected_signature)
     return hmac.compare_digest(
         expected_signature,
         received_signature

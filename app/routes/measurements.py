@@ -60,9 +60,9 @@ async def recive_data(
                 detail="Estación no encontrada"
             )
     
-    print("station_code:", station_code)
+    print(f"station_code:{station_code}")
     #expected = API_KEYS.get(station_code)
-    print("llego aqui")
+    print("TIMESTAMP VERIFICADO")
  
     current_time = int(time.time())
 
@@ -73,13 +73,14 @@ async def recive_data(
         )
     
     message = build_message(
-        station_code,
+        station_code.strip(),
         data
     )
     print("message:\n", message)
     print()
     secret_key = station.secret_key#SECRET_KEYS[station_code]
 
+    
     if not verify_signature(
         message,
         secret_key,
@@ -90,6 +91,8 @@ async def recive_data(
             detail="Firma inválida"
         )
     
+    print("Firma Acceptada: ", signature)
+
     last_timestamp = station.last_timestamp #LAST_TIMESTAMPS.get(station_code)
 
     if last_timestamp is not None:
@@ -98,7 +101,7 @@ async def recive_data(
                 status_code=401,
                 detail="Timestamp repetido"
             )
-
+    print("TIMESTAMP NUEVO")
     #LAST_TIMESTAMPS[station_code] = data.timestamp
     
     # station = get_station_by_station_code(
