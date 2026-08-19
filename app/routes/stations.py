@@ -76,7 +76,8 @@ def get_latest_station(
     return StationResponse(
 
         station_code=station.station_code,
-
+        online=online,
+        
         measurement_timestamp=(
 
             measurement.measurement_timestamp
