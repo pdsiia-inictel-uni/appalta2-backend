@@ -341,15 +341,18 @@ def invalid_link_page():
     """
     return HTMLResponse(content=html_content, status_code=400)
 
-def normalize_empty(value):
+from decimal import Decimal
 
+def normalize_empty(value):
     if value is None:
         return "NA"
 
-    return format(
-        Decimal(str(value)),
-        "f"
-    ).rstrip("0").rstrip(".")
+    s = format(Decimal(str(value)), "f").rstrip("0")
+
+    if s.endswith("."):
+        s += "0"
+
+    return s
 
 
 def build_message(
