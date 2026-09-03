@@ -32,10 +32,16 @@ CREATE TABLE stations (
     id BIGSERIAL PRIMARY KEY,
 
     station_code VARCHAR(50) NOT NULL UNIQUE,
+    
+    name VARCHAR(100) NOT NULL,
 
     mac_address VARCHAR(17) NOT NULL UNIQUE,
 
     secret_key VARCHAR(128) NOT NULL,
+    
+    latitude DOUBLE PRECISION,
+
+    longitude DOUBLE PRECISION,
 
     last_timestamp BIGINT NOT NULL DEFAULT 0,
 

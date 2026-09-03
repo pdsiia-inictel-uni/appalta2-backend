@@ -198,6 +198,7 @@ def serve_reset_page(token: str, request: Request, db: Session = Depends(get_db)
         expiry = expiry.replace(tzinfo=timezone.utc)
 
     if datetime.now(timezone.utc) > expiry:
+        print("Enlace a expirado")
         return templates.TemplateResponse(
                     request=request,
                     name="invalid_link.html",
