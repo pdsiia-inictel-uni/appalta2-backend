@@ -6,6 +6,7 @@ class Station(Base):
     __tablename__ = "stations"
     id = Column(BigInteger, primary_key=True, index=True)
     station_code = Column(String, unique=True)
+    name = Column(String)
     mac_address = Column(String)
     secret_key = Column(String)
     last_timestamp = Column(String)

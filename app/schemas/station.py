@@ -14,6 +14,8 @@ class StationResponse(BaseModel):
 
     station_code: str
 
+    name: str 
+
     online: bool
     
     measurement_timestamp: Optional[int] = None
