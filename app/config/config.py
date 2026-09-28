@@ -19,7 +19,6 @@ MAIL_STARTTLS = os.getenv("MAIL_STARTTLS", "True") == "True"
 MAIL_SSL_TLS = os.getenv("MAIL_SSL_TLS", "False") == "True"
 USE_CREDENTIALS = os.getenv("USE_CREDENTIALS", "True") == "True"
 
-
 # Configuración para FastAPI-Mail
 mail_conf = ConnectionConfig(
     MAIL_USERNAME=MAIL_USERNAME,

@@ -31,4 +31,8 @@ app.include_router(
     tags=["Stations"],
 )
 
+# Módulo Asistente IA (chat por estación). Autocontenido en app/assistant/.
+from app.assistant import assistant_router
+app.include_router(assistant_router, prefix="/api/v1")
+
 #app.include_router(routes.router, prefix="/api", tags=["auth"])
