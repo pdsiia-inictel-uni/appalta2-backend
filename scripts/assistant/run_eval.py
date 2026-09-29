@@ -16,7 +16,12 @@ debe existir en los datos que devolvieron las herramientas: si no, es un valor i
 La hora "actual" se fija con --now para que las respuestas esperadas no
 cambien con el paso del tiempo.
 
+Con --judge, además, un LLM juez califica cada respuesta (fidelidad, pertinencia,
+alcance, claridad) y se aplica el criterio de paso a producción; el proceso
+termina con código 1 si no se cumple (útil en CI).
+
 Uso:  python -m scripts.assistant.run_eval [--now "2026-09-19 12:00"] [--only A1,B2] [--category F]
+      python -m scripts.assistant.run_eval --judge --judge-model gemma4:12b --report reporte.json
 """
 
 import argparse
@@ -33,9 +38,10 @@ from zoneinfo import ZoneInfo
 
 from app.assistant.chat.grounding import find_unsupported_values
 from app.assistant.config import get_settings
-from app.assistant.domain.dates import extract_date_range
 from app.assistant.domain.periods import Period, PeriodError, resolve_period
+from app.assistant.tools.station_tools import StatsArgs, effective_range
 from app.assistant.container import AssistantContainer
+from scripts.assistant.judge import CRITERIA, Judge
 
 CASES = Path(__file__).with_name("cases.json")
 
@@ -73,18 +79,15 @@ def contains_number(text: str, value: str) -> bool:
 
 
 def same_interval(expected_period: str, args: dict, question: str, now: datetime | None) -> bool:
-    """True si los argumentos del modelo cubren el mismo intervalo que el periodo esperado
-    (p. ej. periodo 'rango' con fecha 2026-09-18 equivale a 'ayer' si hoy es 19/09)."""
+    """True si la consulta real (misma lógica que la herramienta) cubre el mismo intervalo
+    que el periodo esperado; p. ej. 'rango' 2026-09-18 equivale a 'ayer' si hoy es 19/09."""
     if now is None:
         return False
     try:
-        start = datetime.strptime(args["fecha_inicio"], "%Y-%m-%d").date() if args.get("fecha_inicio") else None
-        end = datetime.strptime(args["fecha_fin"], "%Y-%m-%d").date() if args.get("fecha_fin") else None
-        if start is None and str(args.get("periodo", "")).lower() == "rango":
-            start, end = extract_date_range(question, now.date()) or (None, None)  # mismo respaldo del sistema
-        got = resolve_period(Period(str(args.get("periodo", "")).lower()), now, start, end)
+        # El sensor no influye en el intervalo; se completa por si el caso no lo trae.
+        _, got = effective_range(StatsArgs.model_validate({"sensor": "temperatura_ambiente", **args}), question, now)
         want = resolve_period(Period(expected_period), now)
-    except (KeyError, ValueError, PeriodError):
+    except (ValueError, PeriodError):
         return False
     return (got.start, got.end) == (want.start, want.end)
 
@@ -142,23 +145,49 @@ def check(case: dict, result, now: datetime | None = None) -> list[str]:
     return failures
 
 
-async def main(now_text: str, only: set[str], category: str | None) -> None:
+async def main(args: argparse.Namespace) -> int:
     settings = get_settings()
     logging.basicConfig(level=logging.WARNING)
-    now = datetime.strptime(now_text, "%Y-%m-%d %H:%M").replace(tzinfo=ZoneInfo(settings.timezone))
+    now = datetime.strptime(args.now, "%Y-%m-%d %H:%M").replace(tzinfo=ZoneInfo(settings.timezone))
     container = AssistantContainer(settings, clock=lambda: now)
     service = container.chat_service
+    judge = (
+        Judge(
+            settings.llm_base_url,
+            args.judge_model or settings.llm_model,
+            think=args.judge_think,
+            context_tokens=settings.llm_context_tokens,
+        )
+        if args.judge
+        else None
+    )
 
+    only = {i.strip() for i in args.only.split(",") if i.strip()}
     cases = json.loads(CASES.read_text(encoding="utf-8"))
     if only:
         cases = [c for c in cases if c["id"] in only]
-    if category:
-        cases = [c for c in cases if c["category"].startswith(category)]
+    if args.category:
+        cases = [c for c in cases if c["category"].startswith(args.category)]
 
-    print(f"Modelo: {settings.llm_model} · hora simulada: {now_text} · {len(cases)} casos\n")
+    print(f"Modelo: {settings.llm_model} · hora simulada: {args.now} · {len(cases)} casos")
+    if judge:
+        print(f"Juez: {judge.model}" + (" (el mismo modelo del asistente: resultados menos confiables)" if judge.model == settings.llm_model else ""))
+    print()
+
     by_category: dict[str, list[bool]] = defaultdict(list)
     durations: list[float] = []
+    report: dict = {"modelo": settings.llm_model, "hora_simulada": args.now, "juez": judge.model if judge else None, "casos": []}
+    calibration_ok = None
     try:
+        if judge:
+            calibration = await judge.calibrate()
+            calibration_ok = all(ok for _, ok, _ in calibration)
+            print("Calibración del juez (debe distinguir respuestas buenas de malas conocidas):")
+            for name, ok, verdict in calibration:
+                print(f"  {'✔' if ok else '✘'} {name}: {'aprobada' if verdict.aprobado else 'rechazada'} — {verdict.motivo}")
+            report["calibracion"] = [{"caso": n, "acierto": ok, **v.as_dict()} for n, ok, v in calibration]
+            print()
+
         for case in cases:
             result = await service.ask(case["station"], case["question"], "eval", uuid.uuid4().hex)
             failures = check(case, result, now)
@@ -171,17 +200,55 @@ async def main(now_text: str, only: set[str], category: str | None) -> None:
             print(f"      respuesta: {result.answer}")
             if failures:
                 print(f"      FALLOS: {'; '.join(failures)}")
+            entry = {"id": case["id"], "pregunta": case["question"], "respuesta": result.answer, "fallos": failures}
+            if judge:
+                verdict = await judge.evaluate(case["question"], [t.output for t in result.tools], result.answer)
+                scores = " ".join(f"{c[:4]}={getattr(verdict, c)}" for c in CRITERIA)
+                print(f"      JUEZ: {'aprobada' if verdict.aprobado else 'RECHAZADA'} ({scores}) — {verdict.motivo}")
+                entry["juez"] = verdict.as_dict()
+            report["casos"].append(entry)
             print()
     finally:
         await container.aclose()
+        if judge:
+            await judge.aclose()
 
     total = sum(len(v) for v in by_category.values())
     passed = sum(sum(v) for v in by_category.values())
     print("Resumen por categoría:")
     for cat, results in by_category.items():
         print(f"  {cat:35s} {sum(results)}/{len(results)}")
-    print(f"\nAciertos: {passed}/{total} ({passed / total:.0%})")
+    accuracy = passed / total
+    print(f"\nAciertos (chequeos deterministas): {passed}/{total} ({accuracy:.0%})")
     print(f"Tiempo por pregunta: mediana {statistics.median(durations):.1f}s · máximo {max(durations):.1f}s")
+
+    gate_ok = accuracy >= args.min_accuracy
+    report["aciertos"] = accuracy
+    if judge:
+        verdicts = [c["juez"] for c in report["casos"]]
+        approval = sum(v["aprobado"] for v in verdicts) / len(verdicts)
+        mean_fid = statistics.mean(v["fidelidad"] for v in verdicts)
+        severe = [c["id"] for c in report["casos"] if c["juez"]["fidelidad"] <= 2]
+        means = {c: statistics.mean(v[c] for v in verdicts) for c in CRITERIA}
+        print(f"Juez: aprobadas {approval:.0%} · promedios " + " · ".join(f"{c} {m:.2f}" for c, m in means.items()))
+        if severe:
+            print(f"Juez: fidelidad grave (≤2) en {severe}")
+        gate_ok = gate_ok and approval >= args.min_judge_approval and mean_fid >= args.min_faithfulness and not severe
+        if not calibration_ok:
+            print("AVISO: el juez falló la calibración; sus veredictos no son confiables. Usa un modelo juez más capaz.")
+            gate_ok = False
+        report.update(aprobacion_juez=approval, promedios_juez=means, fidelidad_grave=severe, calibracion_ok=calibration_ok)
+
+    criteria = f"aciertos ≥ {args.min_accuracy:.0%}"
+    if judge:
+        criteria += f", aprobación del juez ≥ {args.min_judge_approval:.0%}, fidelidad media ≥ {args.min_faithfulness}, sin fidelidad ≤ 2, juez calibrado"
+    print(f"\n{'✅ APTO PARA PRODUCCIÓN' if gate_ok else '❌ NO APTO PARA PRODUCCIÓN'} ({criteria})")
+    report["apto_produccion"] = gate_ok
+
+    if args.report:
+        Path(args.report).write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"Reporte guardado en {args.report}")
+    return 0 if gate_ok else 1
 
 
 if __name__ == "__main__":
@@ -189,5 +256,11 @@ if __name__ == "__main__":
     parser.add_argument("--now", default="2026-09-19 12:00", help="hora local simulada (YYYY-MM-DD HH:MM)")
     parser.add_argument("--only", default="", help="ids separados por coma, p. ej. A1,B2")
     parser.add_argument("--category", default=None, help="letra de categoría, p. ej. F")
-    args = parser.parse_args()
-    asyncio.run(main(args.now, {i.strip() for i in args.only.split(",") if i.strip()}, args.category))
+    parser.add_argument("--judge", action="store_true", help="califica cada respuesta con un LLM juez")
+    parser.add_argument("--judge-model", default=None, help="modelo juez en Ollama (por defecto, el del asistente)")
+    parser.add_argument("--judge-think", action="store_true", help="activa el razonamiento del juez (más lento, más preciso)")
+    parser.add_argument("--min-accuracy", type=float, default=0.95)
+    parser.add_argument("--min-judge-approval", type=float, default=0.90)
+    parser.add_argument("--min-faithfulness", type=float, default=4.5)
+    parser.add_argument("--report", default=None, help="ruta de un reporte JSON con todos los resultados")
+    raise SystemExit(asyncio.run(main(parser.parse_args())))

@@ -17,6 +17,8 @@ class Period(str, Enum):
     ULTIMAS_24_HORAS = "ultimas_24_horas"
     ULTIMOS_7_DIAS = "ultimos_7_dias"
     ULTIMOS_30_DIAS = "ultimos_30_dias"
+    ESTE_MES = "este_mes"
+    MES_ANTERIOR = "mes_anterior"
     RANGO = "rango"
 
 
@@ -67,6 +69,11 @@ def resolve_period(
             return TimeRange(now - timedelta(days=7), now)
         case Period.ULTIMOS_30_DIAS:
             return TimeRange(now - timedelta(days=30), now)
+        case Period.ESTE_MES:
+            return TimeRange(today.replace(day=1), now)
+        case Period.MES_ANTERIOR:
+            first_this_month = today.replace(day=1)
+            return TimeRange((first_this_month - timedelta(days=1)).replace(day=1), first_this_month)
         case Period.RANGO:
             return _custom_range(now, start_date, end_date)
     raise PeriodError(f"Periodo no soportado: {period}")

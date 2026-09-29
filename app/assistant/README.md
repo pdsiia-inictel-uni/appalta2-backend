@@ -14,6 +14,23 @@ Es un módulo autocontenido del monolito: se registra con dos líneas en
 | `humedad_suelo` | `soil_moisture` | % | 0 a 100 (0 exacto se avisa) |
 | `ph_suelo` | `soil_ph` | pH | 0 a 14 |
 
+## Reportes por sensor
+
+Cada sensor mide cada ~10 minutos (unas 144 lecturas por día). La herramienta
+`estadisticas_sensor` resume cualquier periodo y el **código** (no el modelo) calcula:
+
+| Dato | Ejemplo de pregunta |
+|---|---|
+| Máximo y mínimo con día y hora | "¿Qué día del mes hubo mayor temperatura?" → 35.6 °C el 12/09 13:55 |
+| Día con promedio más alto / más bajo | "¿Qué día tuvo la temperatura promedio más alta?" → 06/09, 25.3 °C |
+| Promedio, días con datos y resumen diario | "Dame un reporte de la temperatura de este mes" |
+| Tendencia (sube / baja / estable) | "¿Cómo cambió el pH del 4 al 18 de septiembre?" |
+
+Periodos: `hoy`, `ayer`, `ultimas_24_horas`, `ultimos_7_dias`, `ultimos_30_dias`,
+`este_mes`, `mes_anterior` y `rango`. Las fechas escritas por el usuario
+("septiembre", "del 10 al 18", "mes pasado", "última semana") las interpreta
+`domain/dates.py` y tienen prioridad sobre las que complete el modelo.
+
 ## Rutas
 
 Todas requieren `Authorization: Bearer <access_token>` de `/api/v1/user/login`.
@@ -90,7 +107,7 @@ TIMEZONE=America/Lima
 # Chat en consola contra la BD real
 .\venv\Scripts\python.exe -m scripts.assistant.chat_cli --station EST001-PALTAS
 
-# Evaluación: 27 preguntas con respuestas reales (scripts/assistant/cases.json)
+# Evaluación: 35 preguntas con respuestas reales (scripts/assistant/cases.json)
 .\venv\Scripts\python.exe -m scripts.assistant.run_eval
 .\venv\Scripts\python.exe -m scripts.assistant.run_eval --only A1,E1
 ```

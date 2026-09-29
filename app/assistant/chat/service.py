@@ -8,6 +8,11 @@ Flujo por pregunta:
 4. La respuesta final se transmite por partes (streaming).
 5. Cada medición de la respuesta se verifica contra los datos consultados; si
    hay un valor no respaldado, se descarta (evento reset) y se regenera una vez.
+6. Si los datos traen avisos de calidad (sensor desconectado, lecturas
+   descartadas) y la respuesta no los menciona, se añaden al final.
+7. Si no hay datos del periodo pedido (o las lecturas "actuales" no son de hoy),
+   la herramienta trae una respuesta_directa redactada por el código y se entrega
+   tal cual, sin otra llamada al modelo: siempre exacta y más rápida.
 """
 
 import json
@@ -42,6 +47,15 @@ _CORRECTION_TEMPLATE = (
     "usando solo los valores exactos que devolvieron las herramientas."
 )
 _EMPTY_ANSWER = "No pude generar una respuesta. ¿Puedes reformular la pregunta?"
+# Preguntas que piden un consejo: la respuesta directa aclara primero que no se dan recomendaciones.
+_ADVICE_QUESTION = re.compile(
+    r"\b(?:debo|deber[ií]a|deber[ií]amos|recomienda[sn]?|recomiendas|me aconsejas|conviene|qu[eé] hago|"
+    r"es buen momento|necesito)\b",
+    re.IGNORECASE,
+)
+_NO_ADVICE_PREFIX = "No doy recomendaciones agronómicas; solo informo los datos de la estación. "
+# Palabras que indican que la respuesta ya comunicó un aviso de calidad de datos.
+_WARNING_MENTIONED = re.compile(r"sensor|descart|desconect|falla|aviso", re.IGNORECASE)
 
 
 class StationNotFoundError(Exception):
@@ -170,6 +184,10 @@ class ChatService:
                 if unsupported:
                     logger.warning("La respuesta corregida aún contiene valores no respaldados: %s", unsupported)
                 answer = text or _EMPTY_ANSWER
+                if note := _missing_quality_note(answer, executions):
+                    answer += note
+                    if stream_text:
+                        yield ChatEvent("delta", text=note)
                 if not stream_text:
                     yield ChatEvent("delta", text=answer)
                 break
@@ -182,13 +200,21 @@ class ChatService:
                     "tool_calls": [{"function": {"name": c.name, "arguments": c.arguments}} for c in calls],
                 }
             )
+            round_outputs = []
             for call in calls:
                 yield ChatEvent("tool", tool=call.name)
                 output = await run_in_threadpool(toolbox.execute, call.name, call.arguments)
+                round_outputs.append(output)
                 executions.append(ToolExecution(call.name, call.arguments, "error" not in output, output))
                 messages.append(
                     {"role": "tool", "tool_name": call.name, "content": json.dumps(output, ensure_ascii=False)}
                 )
+            if all("respuesta_directa" in o for o in round_outputs):
+                answer = " ".join(dict.fromkeys(o["respuesta_directa"] for o in round_outputs))
+                if _ADVICE_QUESTION.search(question):
+                    answer = _NO_ADVICE_PREFIX + answer
+                yield ChatEvent("delta", text=answer)
+                break
         else:
             answer = _EMPTY_ANSWER
             yield ChatEvent("delta", text=answer)
@@ -215,3 +241,11 @@ class ChatService:
 
     def reset_session(self, station_code: str, user_id: str, session_id: str) -> None:
         self._memory.clear(f"{user_id}:{station_code}:{session_id}")
+
+
+def _missing_quality_note(answer: str, executions: list[ToolExecution]) -> str:
+    """Avisos de calidad de las herramientas que la respuesta no comunicó (texto a añadir)."""
+    warnings = list(dict.fromkeys(w for e in executions for w in e.output.get("avisos", [])))
+    if not warnings or _WARNING_MENTIONED.search(answer):
+        return ""
+    return "".join(f" Aviso: {w}" for w in warnings)
