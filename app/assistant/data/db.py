@@ -1,4 +1,4 @@
-from sqlalchemy import Engine, create_engine
+from sqlalchemy import Engine, create_engine, make_url
 
 from app.assistant.config import AssistantSettings
 
@@ -13,17 +13,21 @@ def create_db_engine(settings: AssistantSettings, database_url: str | None = Non
     if database_url is None:
         from app.database.connection import DATABASE_URL as database_url
 
+    session_params = {
+        "default_transaction_read_only": "on",
+        "statement_timeout": str(settings.assistant_db_statement_timeout_ms),
+    }
+    if make_url(database_url).get_driver_name() == "pg8000":
+        # pg8000 (Python puro) no entiende "options" de libpq; envía los parámetros al iniciar la sesión.
+        connect_args = {"startup_params": session_params}
+    else:
+        connect_args = {"options": " ".join(f"-c {k}={v}" for k, v in session_params.items())}
+
     return create_engine(
         database_url,
         pool_size=settings.assistant_db_pool_size,
         max_overflow=settings.assistant_db_max_overflow,
         pool_pre_ping=True,
         pool_recycle=1800,
-        connect_args={
-            "options": (
-                "-c default_transaction_read_only=on "
-                f"-c statement_timeout={settings.assistant_db_statement_timeout_ms}"
-            ),
-            "application_name": "appalta2-assistant",
-        },
+        connect_args={**connect_args, "application_name": "appalta2-assistant"},
     )

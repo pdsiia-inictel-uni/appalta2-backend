@@ -11,11 +11,13 @@ completar las fechas. Este intérprete determinista las obtiene del texto:
     "en septiembre", "agosto de 2026"      → mes completo
     "este mes", "del mes", "mes actual"    → mes en curso
     "el mes pasado", "mes anterior"        → mes anterior completo
+    "setimbe", "septimbre", "agsoto"       → se corrigen errores de tipeo en meses
 
 Sin año se asume el año actual; si esa fecha (o mes) aún no llegó, el año anterior.
 """
 
 import calendar
+import difflib
 import re
 import unicodedata
 from datetime import date, timedelta
@@ -120,9 +122,40 @@ def _make_day(year: Optional[int], month: int, day: int, today: Optional[date] =
         return None
 
 
-def _normalize(text: str) -> str:
+# Palabras a las que se corrigen errores de tipeo ("setimbe" → "setiembre", "temperatrua" →
+# "temperatura", "promdio" → "promedio"): meses largos y el vocabulario de las preguntas.
+_FUZZY_WORDS = [m for m in _MONTHS if len(m) >= 6] + [
+    "temperatura", "humedad", "suelo", "ambiente", "ambiental", "presion", "atmosferica",
+    "promedio", "maximo", "maxima", "minimo", "minima", "tendencia", "reporte", "resumen",
+    "semana", "ultima", "ultimos", "ultimas", "registrada", "registrado", "recomiendas", "recomendacion",
+]  # fmt: skip
+# Palabras correctas que se parecen a otra del vocabulario: no se tocan.
+_KNOWN_WORDS = {
+    "nombre", "entero", "siembre", "octavo", "humedo", "humeda", "sueno", "sueldo", "sueldos", "suela",
+    "mimo", "ultimo", "semanas", "minimos", "maximos", "minimas", "maximas", "maximizar", "minimizar",
+    "promedios", "reportes", "temperaturas", "suelos", "ambientes", "registro", "registros", "registra",
+    "registran", "registrar", "reporta", "reportan", "precision", "semanal", "maximiza", "ambientador",
+    "suelto", "suelta", "sueltos", "tenencia", "dependencia", "tendencias", "resumenes",
+}  # fmt: skip
+_WORD = re.compile(r"[a-z]{4,}")
+
+
+def normalize_text(text: str) -> str:
+    """Minúsculas, sin tildes y con las palabras clave mal escritas corregidas."""
     text = unicodedata.normalize("NFKD", text.lower())
-    return "".join(c for c in text if not unicodedata.combining(c))
+    text = "".join(c for c in text if not unicodedata.combining(c))
+    return _WORD.sub(_fix_typo, text)
+
+
+def _fix_typo(match: re.Match) -> str:
+    word = match.group(0)
+    if word in _MONTHS or word in _KNOWN_WORDS or word in _FUZZY_WORDS:
+        return word
+    close = difflib.get_close_matches(word, _FUZZY_WORDS, n=1, cutoff=0.8)
+    return close[0] if close else word
+
+
+_normalize = normalize_text
 
 
 # Expresiones relativas → periodo (se evalúan en este orden)

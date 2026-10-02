@@ -62,6 +62,8 @@ class MeasurementRepository(Protocol):
 
     def last_reading(self, station_id: int, sensor: Sensor) -> Reading | None: ...
 
+    def count_measurements(self, station_id: int, start_ts: int, end_ts: int) -> int: ...
+
 
 _BASE_FROM = """
     FROM sensor_measurements sm
@@ -177,3 +179,12 @@ class SqlMeasurementRepository:
         with self._engine.connect() as conn:
             row = conn.execute(sql, {"station_id": station_id} | _sensor_params(sensor)).first()
         return Reading(sensor.db_code, float(row.sensor_value), row.measurement_timestamp) if row else None
+
+    def count_measurements(self, station_id: int, start_ts: int, end_ts: int) -> int:
+        """Envíos de la estación en el rango (cada envío trae una lectura de cada sensor)."""
+        sql = text(
+            "SELECT count(*) FROM station_measurements"
+            " WHERE station_id = :station_id AND measurement_timestamp >= :start_ts AND measurement_timestamp < :end_ts"
+        )
+        with self._engine.connect() as conn:
+            return conn.execute(sql, {"station_id": station_id, "start_ts": start_ts, "end_ts": end_ts}).scalar_one()

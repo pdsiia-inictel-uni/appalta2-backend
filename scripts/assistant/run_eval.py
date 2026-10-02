@@ -3,7 +3,10 @@
 Cada caso de `cases.json` puede verificar:
 - expect_tool / expect_args: herramienta, sensor y periodo elegidos por el modelo (las fechas
   concretas las comprueban los valores esperados, porque el código puede completarlas).
-- expect_values: números que deben aparecer en la respuesta (valores reales de la BD).
+- expect_db: respuesta esperada calculada desde la BD al momento de evaluar (ver oracle.py):
+  valores, días, hora o tendencia; si el periodo no tiene datos, se espera "no hay datos".
+  Así la evaluación sigue siendo válida cuando llegan datos nuevos o cambia el mes.
+- expect_values: números fijos que deben aparecer en la respuesta.
 - expect_trend: "up" o "down", la respuesta debe describir esa tendencia.
 - expect_keywords_any: al menos una de estas palabras en la respuesta.
 - expect_no_data / expect_refusal: debe decir que no hay datos / que está fuera de alcance.
@@ -13,14 +16,13 @@ Cada caso de `cases.json` puede verificar:
 Además, en TODOS los casos, cada medición de la respuesta (número + °C, %, hPa o pH)
 debe existir en los datos que devolvieron las herramientas: si no, es un valor inventado.
 
-La hora "actual" se fija con --now para que las respuestas esperadas no
-cambien con el paso del tiempo.
+Por defecto se evalúa con la hora real (como en producción); --now simula otra hora.
 
 Con --judge, además, un LLM juez califica cada respuesta (fidelidad, pertinencia,
 alcance, claridad) y se aplica el criterio de paso a producción; el proceso
 termina con código 1 si no se cumple (útil en CI).
 
-Uso:  python -m scripts.assistant.run_eval [--now "2026-09-19 12:00"] [--only A1,B2] [--category F]
+Uso:  python -m scripts.assistant.run_eval [--now "2026-10-01 12:00"] [--only A1,B2] [--category F]
       python -m scripts.assistant.run_eval --judge --judge-model gemma4:12b --report reporte.json
 """
 
@@ -37,17 +39,19 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from app.assistant.chat.grounding import find_unsupported_values
+from app.assistant.domain.avocado import REFERENCE_TEXT
 from app.assistant.config import get_settings
 from app.assistant.domain.periods import Period, PeriodError, resolve_period
 from app.assistant.tools.station_tools import StatsArgs, effective_range
 from app.assistant.container import AssistantContainer
 from scripts.assistant.judge import CRITERIA, Judge
+from scripts.assistant.oracle import Oracle
 
 CASES = Path(__file__).with_name("cases.json")
 
 REFUSAL_HINTS = (
     "solo puedo", "sólo puedo", "únicamente", "no puedo", "no tengo", "no cuento", "no dispongo",
-    "no doy", "no brindo", "no ofrezco", "no proporciono", "no mide", "no registra", "fuera de",
+    "no doy", "no brindo", "no ofrezco", "no proporciono", "no mide", "no registra", "fuera de", "solo respondo", "no está relacionada",
 )  # fmt: skip
 NO_DATA_HINTS = (
     "no hay", "sin datos", "no se registr", "no tiene registros", "no existen", "no se encontr",
@@ -58,6 +62,7 @@ NO_DATA_HINTS = (
 TREND_HINTS = {
     "down": ("bajó", "bajando", "a la baja", "disminu", "descend", "se redujo", "cayó", "decrec", "se secó"),
     "up": ("subió", "subiendo", "al alza", "aument", "ascend", "increment", "creció"),
+    "stable": ("estable", "se mantuvo", "sin cambios", "sin variación"),
 }
 
 
@@ -135,7 +140,8 @@ def check(case: dict, result, now: datetime | None = None) -> list[str]:
     if case.get("expect_refusal") and not any(h in low for h in REFUSAL_HINTS):
         failures.append("no rechaza / no aclara su alcance")
 
-    if unsupported := find_unsupported_values(answer, [t.output for t in result.tools]):
+    # Las referencias de palta Hass ("óptimo 20–40 %") son válidas, igual que en el servicio.
+    if unsupported := find_unsupported_values(answer, [t.output for t in result.tools] + [REFERENCE_TEXT]):
         failures.append(f"valores inventados (no están en los datos): {unsupported}")
 
     for text in case.get("forbid_text", []):
@@ -148,9 +154,13 @@ def check(case: dict, result, now: datetime | None = None) -> list[str]:
 async def main(args: argparse.Namespace) -> int:
     settings = get_settings()
     logging.basicConfig(level=logging.WARNING)
-    now = datetime.strptime(args.now, "%Y-%m-%d %H:%M").replace(tzinfo=ZoneInfo(settings.timezone))
+    tz = ZoneInfo(settings.timezone)
+    # Sin --now: hora real, como en producción (las respuestas esperadas las calcula el oráculo).
+    now = datetime.strptime(args.now, "%Y-%m-%d %H:%M").replace(tzinfo=tz) if args.now else datetime.now(tz)
+    args.now = now.strftime("%Y-%m-%d %H:%M")
     container = AssistantContainer(settings, clock=lambda: now)
     service = container.chat_service
+    oracle = Oracle(container.engine, tz)
     judge = (
         Judge(
             settings.llm_base_url,
@@ -189,6 +199,7 @@ async def main(args: argparse.Namespace) -> int:
             print()
 
         for case in cases:
+            case = {**case, **oracle.expectations(case, now)}
             result = await service.ask(case["station"], case["question"], "eval", uuid.uuid4().hex)
             failures = check(case, result, now)
             ok = not failures
@@ -253,7 +264,7 @@ async def main(args: argparse.Namespace) -> int:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--now", default="2026-09-19 12:00", help="hora local simulada (YYYY-MM-DD HH:MM)")
+    parser.add_argument("--now", default=None, help="hora local simulada (YYYY-MM-DD HH:MM); por defecto, la real")
     parser.add_argument("--only", default="", help="ids separados por coma, p. ej. A1,B2")
     parser.add_argument("--category", default=None, help="letra de categoría, p. ej. F")
     parser.add_argument("--judge", action="store_true", help="califica cada respuesta con un LLM juez")

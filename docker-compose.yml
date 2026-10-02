@@ -1,0 +1,61 @@
+# Producción (marcha blanca): API + modelo de IA. La base de datos es la existente de
+# producción y se configura con DATABASE_URL en .env.production. Ver DEPLOY.md.
+#
+#   docker compose --env-file .env.production up -d --build
+
+services:
+  backend:
+    build: .
+    image: appalta2-backend:latest
+    container_name: appalta2-backend
+    restart: unless-stopped
+    env_file: .env.production
+    environment:
+      # El modelo corre en el contenedor "ollama" (red interna de compose)
+      LLM_BASE_URL: http://ollama:11434
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    extra_hosts:
+      # Permite DATABASE_URL=...@host.docker.internal:5432/... si PostgreSQL está en el mismo servidor
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      ollama:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: appalta2-ollama
+    restart: unless-stopped
+    environment:
+      # Igual a LLM_MAX_CONCURRENCY del backend (CPU: 1–2 generaciones a la vez)
+      OLLAMA_NUM_PARALLEL: "${LLM_MAX_CONCURRENCY:-2}"
+      OLLAMA_KEEP_ALIVE: "30m"
+    volumes:
+      - ollama-models:/root/.ollama
+    # Sin "ports": el modelo solo es accesible desde el backend, no desde internet.
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "3" }
+
+  # Descarga el modelo la primera vez (~7 GB); en los siguientes arranques termina al instante.
+  ollama-pull:
+    image: ollama/ollama:latest
+    container_name: appalta2-ollama-pull
+    restart: "no"
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["ollama", "pull", "${LLM_MODEL:-gemma4:e2b}"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+volumes:
+  ollama-models:

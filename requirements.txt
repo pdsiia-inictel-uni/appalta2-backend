@@ -2,6 +2,7 @@ fastapi
 uvicorn
 sqlalchemy
 psycopg2-binary
+pg8000  # driver Python puro: alternativa en Windows con Smart App Control
 python-jose[cryptography]
 passlib[bcrypt]
 pydantic[email]

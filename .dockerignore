@@ -1,13 +1,15 @@
 # Entornos virtuales
 venv/
-.env/
-.env.local/
 .venv/
 
-# Python
-__pycache__/
-*.pyc
-*.pyo
+# Secretos: se entregan al contenedor con env_file, nunca dentro de la imagen
+.env
+.env.*
+
+# Python (en cualquier carpeta)
+**/__pycache__
+**/*.pyc
+**/*.pyo
 
 # Git
 .git/
@@ -21,3 +23,5 @@ __pycache__/
 .DS_Store
 
 tests/
+.pytest_cache/
+scratch*.py

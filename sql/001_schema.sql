@@ -217,8 +217,8 @@ CREATE TABLE users (
     firstname VARCHAR(255),
     father_lastname VARCHAR(255),
     mother_lastname VARCHAR(255),
-    document_of_identity VARCHAR(255),
-    cellphone VARCHAR(20),
+    document_of_identity VARCHAR(255) UNIQUE,  -- DNI: 8 dígitos, un solo usuario por DNI
+    cellphone VARCHAR(20),                     -- 9 dígitos (validado en la API)
     is_verified BOOLEAN NOT NULL DEFAULT FALSE,
     verification_token VARCHAR(255),
     reset_password_token VARCHAR(255),

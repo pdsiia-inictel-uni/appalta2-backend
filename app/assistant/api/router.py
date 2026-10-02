@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 from contextlib import asynccontextmanager
@@ -23,8 +24,10 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(_app):
-    # Las dependencias se crean en la primera consulta; aquí solo se liberan al apagar.
+    # Precarga el modelo en segundo plano: la API arranca igual aunque Ollama no esté disponible.
+    warmup = asyncio.create_task(get_container().llm.warmup())
     yield
+    warmup.cancel()
     await shutdown_container()
 
 

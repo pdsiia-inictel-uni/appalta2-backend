@@ -10,7 +10,7 @@ class User(Base):
     firstname = Column(String, nullable=True)
     father_lastname = Column(String, nullable=True)
     mother_lastname = Column(String, nullable=True)
-    document_of_identity = Column(String, nullable=True)
+    document_of_identity = Column(String, unique=True, index=True, nullable=True)
     cellphone = Column(String(20), unique= False, index = True)
     is_verified = Column(Boolean, default=False)
     verification_token = Column(String, nullable=True)

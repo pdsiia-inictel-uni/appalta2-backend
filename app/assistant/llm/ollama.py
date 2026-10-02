@@ -75,6 +75,27 @@ class OllamaClient:
         finally:
             self._slots.release()
 
+    async def warmup(self) -> None:
+        """Carga el modelo en memoria sin generar texto.
+
+        La primera consulta con el modelo descargado de memoria tarda varios
+        segundos más; así ese costo se paga al arrancar y no en la pregunta del
+        usuario. Usa el mismo num_ctx que el chat: si cambia, Ollama lo recarga.
+        """
+        s = self._settings
+        payload = {
+            "model": s.llm_model,
+            "messages": [],
+            "keep_alive": s.llm_keep_alive,
+            "options": {"num_ctx": s.llm_context_tokens},
+        }
+        try:
+            resp = await self._http.post("/api/chat", json=payload)
+            resp.raise_for_status()
+            logger.info("Modelo %s precargado en Ollama", s.llm_model)
+        except httpx.HTTPError as e:
+            logger.warning("No se pudo precargar el modelo en Ollama: %s", e)
+
     async def is_ready(self) -> bool:
         """True si Ollama responde y el modelo configurado está descargado."""
         try:

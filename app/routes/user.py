@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Body, Header, Path, Request
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.services import auth
@@ -39,12 +40,20 @@ async def register(user: user_schemas.UserCreate, db: Session = Depends(get_db))
     db_user = user_db.get_user_by_email(db, user.email)
     if db_user:
         raise HTTPException(status_code=400, detail = "Email ya registrado")
-    
-    # Verificación por correo deshabilitada: el usuario queda verificado al registrarse
-    db_user = user_db.create_user(db, user, None)
-    db_user.is_verified = True
-    db.commit()
-    db.refresh(db_user)
+    if user_db.get_user_by_document(db, user.document_of_identity):
+        raise HTTPException(status_code=400, detail="El número de DNI ya está registrado")
+
+    verification_token = str(uuid.uuid4())
+
+    try:
+        db_user = user_db.create_user(db, user, verification_token)
+    except IntegrityError:
+        # Dos registros simultáneos con el mismo DNI o correo: la restricción UNIQUE de la BD decide.
+        db.rollback()
+        raise HTTPException(status_code=400, detail="El número de DNI o el correo ya está registrado")
+
+    verification_link = f"{BACKEND_URL}/v1/user/verify/{verification_token}"
+    await send_verification_email_gmail(user.email, verification_link)
     return db_user
 
 
@@ -54,6 +63,12 @@ def login(user: user_schemas.UserLogin, db: Session = Depends(get_db)):
     db_user = user_db.autenticate_user(db, user.email, user.password)
     if not db_user:
         raise HTTPException(status_code=401, detail="Credenciales invalidas")
+
+    if not db_user.is_verified:
+        raise HTTPException(
+            status_code=403,
+            detail="Correo no verificado"
+        )
 
     access_token = auth.create_access_token({
         "sub": db_user.email
